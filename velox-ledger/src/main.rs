@@ -3,7 +3,7 @@ use std::sync::Arc;
 
 use tonic::transport::Server;
 use tracing::{info, Level};
-use tracing_subscriber::{fmt, EnvFilter};
+use tracing_subscriber::EnvFilter;
 
 use velox_ledger::config::Config;
 use velox_ledger::proto::ledger_service_server::LedgerServiceServer;

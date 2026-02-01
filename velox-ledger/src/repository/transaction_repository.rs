@@ -4,7 +4,7 @@ use sqlx::{PgPool, Postgres, Transaction as SqlxTransaction};
 use uuid::Uuid;
 
 use crate::domain::{
-    CreateEntryParams, CreateTransactionParams, Entry, EntryType, Transaction, TransactionStatus,
+    CreateEntryParams, CreateTransactionParams, Entry, Transaction, TransactionStatus,
     TransactionWithEntries,
 };
 use crate::error::{LedgerError, Result};
@@ -16,7 +16,7 @@ impl TransactionRepository {
         tx: &mut SqlxTransaction<'_, Postgres>,
         params: &CreateTransactionParams,
     ) -> Result<Transaction> {
-        params.validate().map_err(LedgerError::ValidationError)?;
+        params.validate().map_err(|e| LedgerError::ValidationError(e.to_string()))?;
 
         let transaction: Transaction = sqlx::query_as(
             r#"
@@ -253,7 +253,7 @@ impl TransactionRepository {
 
         // Get total count
         let total: i32 = if account_id.is_some() {
-            sqlx::query_scalar(
+            sqlx::query_scalar::<_, Option<i32>>(
                 r#"
                 SELECT COUNT(DISTINCT t.id)::int
                 FROM transactions t
@@ -273,7 +273,7 @@ impl TransactionRepository {
             .await?
             .unwrap_or(0)
         } else {
-            sqlx::query_scalar(
+            sqlx::query_scalar::<_, Option<i32>>(
                 r#"
                 SELECT COUNT(*)::int
                 FROM transactions

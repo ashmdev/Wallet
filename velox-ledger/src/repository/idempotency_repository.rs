@@ -2,7 +2,7 @@ use chrono::{Duration, Utc};
 use sqlx::{PgPool, Postgres, Transaction};
 use uuid::Uuid;
 
-use crate::error::{LedgerError, Result};
+use crate::error::Result;
 
 pub struct IdempotencyRepository;
 

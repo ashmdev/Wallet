@@ -64,6 +64,8 @@ metrics-exporter-prometheus = "0.16"
 
 [build-dependencies]
 tonic-build = "0.12"
+prost-build = "0.13"
+protobuf-src = "2.1"
 
 [dev-dependencies]
 tokio-test = "0.4"
