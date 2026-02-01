@@ -1,10 +1,10 @@
 # Build stage
-FROM rust:1.75-bookworm AS builder
+FROM rust:latest AS builder
 
 WORKDIR /app
 
-# Install protobuf compiler
-RUN apt-get update && apt-get install -y protobuf-compiler && rm -rf /var/lib/apt/lists/*
+# Install protobuf compiler and cmake (needed for protobuf-src)
+RUN apt-get update && apt-get install -y protobuf-compiler cmake && rm -rf /var/lib/apt/lists/*
 
 # Copy manifests
 COPY Cargo.toml Cargo.lock* ./
