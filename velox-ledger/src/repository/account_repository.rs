@@ -1,5 +1,5 @@
 use rust_decimal::Decimal;
-use sqlx::{PgPool, Postgres, Row, Transaction};
+use sqlx::{PgPool, Postgres, Transaction};
 use uuid::Uuid;
 
 use crate::domain::{Account, AccountStatus, AccountType, CreateAccountParams};
@@ -12,7 +12,7 @@ impl AccountRepository {
         tx: &mut Transaction<'_, Postgres>,
         params: &CreateAccountParams,
     ) -> Result<Account> {
-        params.validate().map_err(LedgerError::ValidationError)?;
+        params.validate().map_err(|e| LedgerError::ValidationError(e.to_string()))?;
 
         let initial_balance = params.initial_balance.unwrap_or(Decimal::ZERO);
 
@@ -294,7 +294,7 @@ impl AccountRepository {
             None
         };
 
-        let total: i32 = sqlx::query_scalar(
+        let total: i32 = sqlx::query_scalar::<_, Option<i32>>(
             r#"
             SELECT COUNT(*)::int
             FROM accounts
