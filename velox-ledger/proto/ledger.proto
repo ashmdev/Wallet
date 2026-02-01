@@ -1,0 +1,239 @@
+syntax = "proto3";
+
+package veloxledger.v1;
+
+option java_package = "com.veloxledger.v1";
+option java_multiple_files = true;
+option go_package = "github.com/veloxledger/api/v1;ledgerv1";
+
+import "google/protobuf/timestamp.proto";
+
+// VeloxLedger Service - High-performance transactional ledger with double-entry accounting
+service LedgerService {
+    // Account Operations
+    rpc CreateAccount(CreateAccountRequest) returns (CreateAccountResponse);
+    rpc GetAccount(GetAccountRequest) returns (GetAccountResponse);
+    rpc GetBalance(GetBalanceRequest) returns (GetBalanceResponse);
+    rpc ListAccounts(ListAccountsRequest) returns (ListAccountsResponse);
+
+    // Transaction Operations - Atomic double-entry
+    rpc PostTransaction(PostTransactionRequest) returns (PostTransactionResponse);
+    rpc GetTransaction(GetTransactionRequest) returns (GetTransactionResponse);
+    rpc ListTransactions(ListTransactionsRequest) returns (ListTransactionsResponse);
+
+    // Health check for load balancers
+    rpc HealthCheck(HealthCheckRequest) returns (HealthCheckResponse);
+}
+
+// ============================================================================
+// Common Types
+// ============================================================================
+
+// Decimal representation for monetary values - NEVER use float/double
+message Decimal {
+    string value = 1;  // String representation to preserve precision (e.g., "1234.56")
+}
+
+enum AccountType {
+    ACCOUNT_TYPE_UNSPECIFIED = 0;
+    ACCOUNT_TYPE_ASSET = 1;       // Activos
+    ACCOUNT_TYPE_LIABILITY = 2;   // Pasivos
+    ACCOUNT_TYPE_EQUITY = 3;      // Patrimonio
+    ACCOUNT_TYPE_REVENUE = 4;     // Ingresos
+    ACCOUNT_TYPE_EXPENSE = 5;     // Gastos
+}
+
+enum AccountStatus {
+    ACCOUNT_STATUS_UNSPECIFIED = 0;
+    ACCOUNT_STATUS_ACTIVE = 1;
+    ACCOUNT_STATUS_FROZEN = 2;
+    ACCOUNT_STATUS_CLOSED = 3;
+}
+
+enum TransactionStatus {
+    TRANSACTION_STATUS_UNSPECIFIED = 0;
+    TRANSACTION_STATUS_PENDING = 1;
+    TRANSACTION_STATUS_COMMITTED = 2;
+    TRANSACTION_STATUS_FAILED = 3;
+    TRANSACTION_STATUS_REVERSED = 4;
+}
+
+enum EntryType {
+    ENTRY_TYPE_UNSPECIFIED = 0;
+    ENTRY_TYPE_DEBIT = 1;
+    ENTRY_TYPE_CREDIT = 2;
+}
+
+// ============================================================================
+// Account Messages
+// ============================================================================
+
+message Account {
+    string id = 1;                              // UUID v7
+    string external_id = 2;                     // Client-provided identifier
+    string name = 3;
+    string currency = 4;                        // ISO 4217 (USD, EUR, MXN)
+    AccountType account_type = 5;
+    AccountStatus status = 6;
+    Decimal balance = 7;                        // Current balance
+    Decimal available_balance = 8;              // Balance minus pending holds
+    Decimal pending_balance = 9;                // Holds/pending transactions
+    int64 version = 10;                         // Optimistic locking version
+    map<string, string> metadata = 11;
+    google.protobuf.Timestamp created_at = 12;
+    google.protobuf.Timestamp updated_at = 13;
+}
+
+message CreateAccountRequest {
+    string idempotency_key = 1;                 // Required for idempotent creation
+    string external_id = 2;
+    string name = 3;
+    string currency = 4;                        // ISO 4217
+    AccountType account_type = 5;
+    Decimal initial_balance = 6;                // Optional opening balance
+    map<string, string> metadata = 7;
+}
+
+message CreateAccountResponse {
+    Account account = 1;
+    bool already_existed = 2;                   // True if idempotency_key was reused
+}
+
+message GetAccountRequest {
+    oneof identifier {
+        string id = 1;
+        string external_id = 2;
+    }
+}
+
+message GetAccountResponse {
+    Account account = 1;
+}
+
+message GetBalanceRequest {
+    string account_id = 1;
+    bool include_pending = 2;                   // Include pending transactions
+}
+
+message GetBalanceResponse {
+    string account_id = 1;
+    Decimal balance = 2;
+    Decimal available_balance = 3;
+    Decimal pending_balance = 4;
+    string currency = 5;
+    google.protobuf.Timestamp as_of = 6;        // Timestamp of balance snapshot
+}
+
+message ListAccountsRequest {
+    int32 page_size = 1;
+    string page_token = 2;
+    AccountType filter_type = 3;
+    AccountStatus filter_status = 4;
+    string filter_currency = 5;
+}
+
+message ListAccountsResponse {
+    repeated Account accounts = 1;
+    string next_page_token = 2;
+    int32 total_count = 3;
+}
+
+// ============================================================================
+// Transaction Messages
+// ============================================================================
+
+// Single entry in a transaction (debit or credit)
+message Entry {
+    string account_id = 1;
+    EntryType entry_type = 2;
+    Decimal amount = 3;                         // Always positive
+    string description = 4;
+    map<string, string> metadata = 5;
+}
+
+// Full transaction with all entries
+message Transaction {
+    string id = 1;                              // UUID v7
+    string idempotency_key = 2;
+    string reference = 3;                       // External reference
+    string description = 4;
+    TransactionStatus status = 5;
+    repeated TransactionEntry entries = 6;
+    string error_message = 7;                   // Populated if status is FAILED
+    map<string, string> metadata = 8;
+    google.protobuf.Timestamp created_at = 9;
+    google.protobuf.Timestamp committed_at = 10;
+}
+
+// Entry as stored (with generated ID)
+message TransactionEntry {
+    string id = 1;
+    string transaction_id = 2;
+    string account_id = 3;
+    EntryType entry_type = 4;
+    Decimal amount = 5;
+    string description = 6;
+    Decimal balance_after = 7;                  // Account balance after this entry
+    map<string, string> metadata = 8;
+    google.protobuf.Timestamp created_at = 9;
+}
+
+message PostTransactionRequest {
+    string idempotency_key = 1;                 // Required - prevents duplicate transactions
+    string reference = 2;                       // Optional external reference
+    string description = 3;
+    repeated Entry entries = 4;                 // Minimum 2 entries (debit + credit)
+    map<string, string> metadata = 5;
+
+    // Optional: Expected versions for optimistic locking
+    // Key: account_id, Value: expected version
+    map<string, int64> expected_versions = 6;
+}
+
+message PostTransactionResponse {
+    Transaction transaction = 1;
+    bool already_existed = 2;                   // True if idempotency_key was reused
+}
+
+message GetTransactionRequest {
+    oneof identifier {
+        string id = 1;
+        string idempotency_key = 2;
+    }
+}
+
+message GetTransactionResponse {
+    Transaction transaction = 1;
+}
+
+message ListTransactionsRequest {
+    int32 page_size = 1;
+    string page_token = 2;
+    string account_id = 3;                      // Filter by account
+    TransactionStatus filter_status = 4;
+    google.protobuf.Timestamp from_date = 5;
+    google.protobuf.Timestamp to_date = 6;
+}
+
+message ListTransactionsResponse {
+    repeated Transaction transactions = 1;
+    string next_page_token = 2;
+    int32 total_count = 3;
+}
+
+// ============================================================================
+// Health Check
+// ============================================================================
+
+message HealthCheckRequest {}
+
+message HealthCheckResponse {
+    enum ServingStatus {
+        UNKNOWN = 0;
+        SERVING = 1;
+        NOT_SERVING = 2;
+    }
+    ServingStatus status = 1;
+    string version = 2;
+    google.protobuf.Timestamp timestamp = 3;
+}

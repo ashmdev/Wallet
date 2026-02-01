@@ -1,0 +1,45 @@
+version: '3.8'
+
+services:
+  velox-ledger:
+    build: .
+    ports:
+      - "50051:50051"
+    environment:
+      VELOX__SERVER__HOST: "0.0.0.0"
+      VELOX__SERVER__PORT: "50051"
+      VELOX__DATABASE__URL: "postgres://veloxledger:veloxledger_secret@postgres:5432/veloxledger"
+      VELOX__DATABASE__MAX_CONNECTIONS: "50"
+      VELOX__RUN_MIGRATIONS: "true"
+      RUST_LOG: "info,sqlx::query=warn"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - velox-network
+
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: veloxledger
+      POSTGRES_PASSWORD: veloxledger_secret
+      POSTGRES_DB: veloxledger
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U veloxledger"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - velox-network
+
+volumes:
+  postgres_data:
+
+networks:
+  velox-network:
+    driver: bridge
